@@ -1,0 +1,9 @@
+[package]
+name = "vice_kernel"
+version = "0.1.0"
+edition = "2024"
+
+[lib] # Must be a static lib to link with boot stub
+name = "vice_kernel"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
