@@ -15,12 +15,12 @@ header_start:
     ; Framebuffer tag (this tells multiboot to set up a framebuffer for us, which we can use in long mode since we don't have BIOS calls anymore)
 align 8
 framebuffer_tag_start:
-    dw 5    ; type = framebuffer
-    dw 0    ; flags = NOT optional (required!)
+    dw 5    ; Type: framebuffer
+    dw 0    ; Flags: not optional (required)
     dd framebuffer_tag_end - framebuffer_tag_start  ; size
-    dd 1280 ; width
-    dd 720  ; height
-    dd 32   ; depth
+    dd 1280 ; Width
+    dd 720  ; Height
+    dd 32   ; Depth
 framebuffer_tag_end:
 
     ; Module alignment tag
@@ -79,7 +79,7 @@ bits 32
     out dx, al
 %endmacro
 
-; Attempt at string print (not fully general yet)
+; Attempt at string print
 %macro SERIAL_PRINT 1-*
     %assign i 0
     %rep %0
@@ -162,6 +162,7 @@ long_mode_entry:
     ; Set up 64-bit stack
     mov rsp, stack_top
     
+	; Entered long mode
 	SERIAL_PRINT 'E', 'n', 't', 'e', 'r', 'e', 'd', ' ', 'l', 'o', 'n', 'g', ' ', 'm', 'o', 'd', 'e', 0x0A
     
     ; Align stack to 16 bytes (required by System V ABI)
