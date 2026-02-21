@@ -18,9 +18,9 @@ pub extern "C" fn _start64(multiboot_info: u64) -> ! {
     let serial = serial::Serial::default(); // COM1 port
     serial.init();
 
-    serial.write_string("Hello, world! This is a test of the serial port.\n");
-
     loop {
+        serial.write_byte(b'H');
+
         arch::halt();
     }
 }

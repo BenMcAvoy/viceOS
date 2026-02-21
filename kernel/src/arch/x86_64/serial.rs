@@ -1,44 +1,48 @@
 use core::fmt::Write;
 
-// inb and outb allow us to read/write to serial ports
 use crate::arch::x86_64::{inb, outb};
+
+// Port base
 
 const COM1: u16 = 0x3F8;
 
-const SERIAL_TEST_BYTE: u8 = 0xAE; // Arbitrary test byte for self-test
+// Register offsets from the port base
+//
+// When DLAB=0 (normal mode), offsets 0 and 1 are:
+const REG_DATA: u16 = 0; // Receive Buffer / Transmit Holding Register
+const REG_IER: u16 = 1; // Interrupt Enable Register
+// When DLAB=1, offsets 0 and 1 address the baud-rate divisor instead:
+const REG_BAUD_LO: u16 = 0; // Divisor Latch, low byte
+const REG_BAUD_HI: u16 = 1; // Divisor Latch, high byte
+// Always accessible regardless of DLAB:
+const REG_FCR: u16 = 2; // FIFO Control Register
+const REG_LCR: u16 = 3; // Line Control Register
+const REG_MCR: u16 = 4; // Modem Control Register
+const REG_LSR: u16 = 5; // Line Status Register
 
-const SERIAL_LCR_OFFSET: u16 = 3; // Line Control Register offset
+// Register flag values
 
-// NOTE: DLAB (Divisor Latch Access Bit) must be set in the Line Control Register (LCR) to access
-// the baud rate divisor registers. When DLAB is set, the first two registers (offsets 0 and 1) are
-// used for the baud rate divisor instead of data and interrupt enable registers.
-const SERIAL_LCR_DLAB: u8 = 0x80; // DLAB bit in LCR
-// threshold
+const LCR_8N1: u8 = 0x03; // 8 data bits, no parity, 1 stop bit
+const LCR_DLAB: u8 = 0x80; // Divisor Latch Access Bit — gates baud registers
 
-const SERIAL_LCR_8N1: u8 = 0x03; // 8 bits, no parity, one stop bit
+const FCR_ENABLE_14B: u8 = 0xC7; // Enable FIFO, clear Tx/Rx, 14-byte threshold
 
-const SERIAL_INTERUPT_ENABLE_OFFSET: u16 = 1; // Interrupt Enable Register offset
+const MCR_LOOPBACK: u8 = 0x1E; // RTS + OUT1 + OUT2 + LOOP (bit 4 enables loopback)
+const MCR_NORMAL: u8 = 0x0F; // DTR + RTS + OUT1 + OUT2  (LOOP bit cleared)
 
-// NOTE: Can only be used after setting DLAB bit in LCR, otherwise this will
-// access the data register instead of the baud rate divisor registers (e.g.
-// used to set interrupt enable bits in the Interrupt Enable Register)
-const SERIAL_BAUD_RATE_DIVISOR_LOW_OFFSET: u16 = 0; // Baud rate divisor low byte offset
-const SERIAL_BAUD_RATE_DIVISOR_HIGH_OFFSET: u16 = 1; // Baud rate divisor high byte offset
+const LSR_DATA_READY: u8 = 0x01; // Bit 0: received data is available
+const LSR_THR_EMPTY: u8 = 0x20; // Bit 5: transmit-hold register is empty
 
-const SERIAL_FCR_OFFSET: u16 = 2; // FIFO Control Register offset
-const SERIAL_FCR_FIFO_14B_THRESHOLD: u8 = 0xC7; // Enable FIFO, clear them, with 14-byte
+// Misc
 
-const SERIAL_DATA_OFFSET: u16 = 0; // Data register offset
-const SERIAL_MCR_OFFSET: u16 = 4; // Modem Control Register offset
-const SERIAL_LOOPBACK_ENABLE: u8 = 0x1E; // Enable loopback mode: bits 1-4 (RTS, OUT1, OUT2, LOOP)
-const SERIAL_LOOPBACK_DISABLE: u8 = 0x0F; // Normal operation: DTR, RTS, OUT1, OUT2 (bit 4/LOOP cleared)
+/// Baud divisor for 115200: `clock (1.8432 MHz) / (16 × 115200) = 1`.
+const BAUD_115200: (u8, u8) = (0x01, 0x00); // (low byte, high byte)
 
-const SERIAL_LSR_OFFSET: u16 = 5; // Line Status Register offset
-const SERIAL_LSR_TRANSMIT_MASK: u8 = 0x20; // Bit 5 (0x20) in the Line Status Register indicates if
-// the transmit buffer is empty
+const LOOPBACK_TEST_BYTE: u8 = 0xAE;
+
+// Implementation
 
 pub struct Serial {
-    // NOTE: We could add fields for baud rate, data bits, etc. if we want to support configuration
     port: u16,
 }
 
@@ -47,72 +51,64 @@ impl Serial {
         Serial { port }
     }
 
-    /// This function initializes the serial port with a standard configuration (115200 baud, 8N1).
-    /// It also disables interrupts for the serial port since we'll handle them in the kernel.
-    /// This uses `inb` and `outb` to write to the serial port's registers. It will also perform
-    /// a self-test by writing to the data register and reading it back. If the test fails, it will
-    /// panic.
+    /// Initialize the port at 115200 baud, 8N1, no interrupts.
+    /// Panics if the loopback self-test fails.
     pub fn init(&self) {
-        // Disable interrupts (we'll handle them in the kernel) (self.port + 1 is the Interrupt
-        // Enable Register)
-        outb(self.port + SERIAL_INTERUPT_ENABLE_OFFSET, 0x00);
+        self.disable_interrupts();
+        self.set_baud(BAUD_115200);
+        self.configure_line(LCR_8N1);
+        self.configure_fifo(FCR_ENABLE_14B);
+        self.loopback_test();
+    }
 
-        // Enable DLAB (set baud rate divisor)
-        // 0x80 sets the DLAB bit in the Line Control Register (LCR)
-        outb(self.port + SERIAL_LCR_OFFSET, SERIAL_LCR_DLAB);
+    fn reg(&self, offset: u16) -> u16 {
+        self.port + offset
+    }
 
-        // Set baud rate divisor to 1 (115200 baud)
-        outb(self.port + SERIAL_BAUD_RATE_DIVISOR_LOW_OFFSET, 0x01);
-        outb(self.port + SERIAL_BAUD_RATE_DIVISOR_HIGH_OFFSET, 0x00);
+    fn disable_interrupts(&self) {
+        outb(self.reg(REG_IER), 0x00);
+    }
 
-        // 0x03 sets 8 bits, no parity, one stop bit (8N1) (NOTE: DLAB is now cleared)
-        outb(self.port + SERIAL_LCR_OFFSET, SERIAL_LCR_8N1);
+    /// Set baud rate via the divisor latch. `divisor` is `(low_byte, high_byte)`.
+    fn set_baud(&self, divisor: (u8, u8)) {
+        outb(self.reg(REG_LCR), LCR_DLAB); // Enable divisor latch
+        outb(self.reg(REG_BAUD_LO), divisor.0);
+        outb(self.reg(REG_BAUD_HI), divisor.1);
+        // Writing LCR without DLAB clears it, restoring REG_DATA / REG_IER
+    }
 
-        // Enable FIFO, clear them, with 14-byte threshold
-        outb(self.port + SERIAL_FCR_OFFSET, SERIAL_FCR_FIFO_14B_THRESHOLD);
+    fn configure_line(&self, lcr: u8) {
+        outb(self.reg(REG_LCR), lcr);
+    }
 
-        // Perform loopback test to verify serial port is working
-        // Loopback is controlled via bit 4 of the MCR (offset 4), not the data register
-        outb(self.port + SERIAL_MCR_OFFSET, SERIAL_LOOPBACK_ENABLE);
+    fn configure_fifo(&self, fcr: u8) {
+        outb(self.reg(REG_FCR), fcr);
+    }
 
-        // Write test byte to the data register; in loopback mode it comes back in the RBR
-        outb(self.port + SERIAL_DATA_OFFSET, SERIAL_TEST_BYTE);
+    /// Enable loopback mode, write a test byte, read it back, then restore normal mode.
+    fn loopback_test(&self) {
+        outb(self.reg(REG_MCR), MCR_LOOPBACK);
+        outb(self.reg(REG_DATA), LOOPBACK_TEST_BYTE);
 
-        // Read back from data register and verify it matches the test byte
-        let test_result = inb(self.port + SERIAL_DATA_OFFSET);
-        if test_result != SERIAL_TEST_BYTE {
+        let result = inb(self.reg(REG_DATA));
+        if result != LOOPBACK_TEST_BYTE {
             panic!(
-                "Serial port self-test failed: expected 0x{:02X}, got 0x{:02X}",
-                SERIAL_TEST_BYTE, test_result
+                "Serial self-test failed: wrote 0x{:02X}, read 0x{:02X}",
+                LOOPBACK_TEST_BYTE, result
             );
         }
 
-        // Disable loopback, restore normal MCR state
-        outb(self.port + SERIAL_MCR_OFFSET, SERIAL_LOOPBACK_DISABLE);
-    }
-
-    fn is_transmit_empty(&self) -> bool {
-        // The Line Status Register (LSR) is at offset 5, and bit 5 (0x20) indicates if the transmit
-        // buffer is empty
-        (inb(self.port + SERIAL_LSR_OFFSET) & SERIAL_LSR_TRANSMIT_MASK) != 0
+        outb(self.reg(REG_MCR), MCR_NORMAL);
     }
 
     pub fn write_byte(&self, byte: u8) {
-        // Wait until the transmit buffer is empty
-        while !self.is_transmit_empty() {}
-
-        // Write the byte to the data register (offset 0)
-        outb(self.port + SERIAL_DATA_OFFSET, byte);
-    }
-
-    fn has_data(&self) -> bool {
-        // Bit 0 (0x01) in the Line Status Register indicates if there is data available to read
-        (inb(self.port + SERIAL_LSR_OFFSET) & 0x01) != 0
+        while inb(self.reg(REG_LSR)) & LSR_THR_EMPTY == 0 {}
+        outb(self.reg(REG_DATA), byte);
     }
 
     pub fn read_byte(&self) -> Option<u8> {
-        if self.has_data() {
-            Some(inb(self.port + SERIAL_DATA_OFFSET))
+        if inb(self.reg(REG_LSR)) & LSR_DATA_READY != 0 {
+            Some(inb(self.reg(REG_DATA)))
         } else {
             None
         }
@@ -121,9 +117,8 @@ impl Serial {
     pub fn write_string(&self, s: &str) {
         for byte in s.bytes() {
             if byte == b'\n' {
-                self.write_byte(b'\r'); // Carriage return before newline for proper formatting
+                self.write_byte(b'\r');
             }
-
             self.write_byte(byte);
         }
     }
