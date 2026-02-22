@@ -11,18 +11,16 @@ mod bootinfo;
 
 pub use bootinfo::BootInfo;
 
-use crate::arch::serial::Serial;
-use core::fmt::Write;
-
 #[unsafe(no_mangle)]
 pub extern "C" fn _start64(multiboot_info: u64) -> ! {
-    let mut serial = Serial::default();
-    serial.init();
-
     let boot_info = BootInfo::from_bootloader(multiboot_info);
+    kprintln!("BootInfo: {:#?}", boot_info);
 
-    writeln!(serial, "BootInfo: {:#?}", boot_info).unwrap();
+    arch::init(&boot_info);
+    kernel_main(&boot_info);
+}
 
+pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
     loop {
         arch::halt();
     }
@@ -36,4 +34,10 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {
         arch::halt();
     }
+}
+
+#[macro_export]
+macro_rules! kprintln {
+    () => ($crate::serial_print!("\n"));
+    ($($arg:tt)*) => ($crate::serial_print!("{}\n", format_args!($($arg)*)));
 }

@@ -7,3 +7,6 @@ edition = "2024"
 name = "vice_kernel"
 path = "src/lib.rs"
 crate-type = ["staticlib"]
+
+[dependencies]
+spin = "0.10.0"

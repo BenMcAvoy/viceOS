@@ -2,6 +2,8 @@ use core::fmt::Write;
 
 use crate::arch::x86_64::{inb, outb};
 
+use spin::Mutex;
+
 // Port base
 
 const COM1: u16 = 0x3F8;
@@ -143,4 +145,25 @@ impl core::fmt::Debug for Serial {
             .field("port", &format_args!("0x{:04X}", self.port))
             .finish()
     }
+}
+
+pub static SERIAL: Mutex<Serial> = Mutex::new(Serial::new(COM1));
+
+pub fn init() {
+    SERIAL.lock().init();
+}
+
+/// Printing macros (supports `format_args!` syntax, e.g. `serial_println!("Hello, {}!", "world")`)
+#[macro_export]
+macro_rules! serial_print {
+    ($($arg:tt)*) => ({
+        use core::fmt::Write;
+        let _ = write!($crate::arch::x86_64::serial::SERIAL.lock(), $($arg)*);
+    });
+}
+
+#[macro_export]
+macro_rules! serial_println {
+    () => ($crate::serial_print!("\n"));
+    ($($arg:tt)*) => ($crate::serial_print!("{}\n", format_args!($($arg)*)));
 }

@@ -1,13 +1,18 @@
 pub mod apic;
 pub mod gdt;
+pub mod idt;
+
 pub mod serial;
 
-use crate::BootInfo;
+use crate::{BootInfo, kprintln};
 
 pub fn init(_: &BootInfo) {
     // TODO: idt init
     // TODO: pit init
     gdt::init();
+    serial::init();
+
+    kprintln!("x86_64 architecture initialized");
 }
 
 /// Read MSR (Model Specific Register)

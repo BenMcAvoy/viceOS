@@ -13,6 +13,8 @@
 
 use core::mem::size_of;
 
+use crate::kprintln;
+
 #[repr(C, packed)]
 struct GdtEntry {
     limit_low: u16,
@@ -134,6 +136,7 @@ struct GdtDescriptor {
     base: u64,
 }
 
+#[repr(C)]
 pub struct Gdt {
     null: GdtEntry,        // Null segment (required, but unused)
     kernel_code: GdtEntry, // Kernel code segment
@@ -166,6 +169,8 @@ pub const USER_DATA_SELECTOR: u16 = 0x20 | 3;
 pub const TSS_SELECTOR: u16 = 0x28;
 
 pub fn init() {
+    kprintln!("Initializing GDT...");
+
     unsafe {
         let tss_addr = &TSS as *const _ as u64;
 
@@ -180,20 +185,34 @@ pub fn init() {
         // Set TSS entry in GDT
         GDT.tss_entry = TssEntry::new(tss_addr, tss_size);
 
+        kprintln!(
+            "GDT initialized with TSS at {:#x}, size {:#x}",
+            tss_addr,
+            tss_size
+        );
+
         // Create GDT descriptor (used for lgdt instruction)
         let gdt_descriptor = GdtDescriptor {
             limit: (size_of::<Gdt>() - 1) as u16,
             base: &GDT as *const _ as u64,
         };
 
+        kprintln!("Loading GDT....");
+
         // Load GDT using lgdt instruction
         load_gdt(&gdt_descriptor);
+
+        kprintln!("GDT loaded, reloading segment registers...");
 
         // Reload segment registers to use new GDT entries
         reload_segments();
 
+        kprintln!("Segment registers reloaded, loading TSS...");
+
         // Load TSS using ltr instruction
         load_tss(TSS_SELECTOR);
+
+        kprintln!("TSS loaded, GDT initialization complete");
     }
 }
 
@@ -213,19 +232,23 @@ fn load_gdt(gdt_descriptor: &GdtDescriptor) {
 fn reload_segments() {
     unsafe {
         core::arch::asm!(
-            "push {0}",            // Push code selector
-            "lea {1}, [rip + 2f]", // Get address of label
-            "push {1}",            // Push return address
-            "retfq",               // Far return
+            // Push CS selector then the address of the label so retfq
+            // jumps there with the new code segment in effect.
+            "push rax",            // Push code selector
+            "lea rcx, [rip + 2f]", // Get address of label (use explicit scratch reg)
+            "push rcx",            // Push return address
+            "retfq",               // Far return — flushes CS pipeline
             "2:",
-            "mov ds, {2:x}",       // Reload data segments
-            "mov es, {2:x}",
-            "mov fs, {2:x}",
-            "mov gs, {2:x}",
-            "mov ss, {2:x}",
-            in(reg) KERNEL_CODE_SELECTOR as u64,
-            lateout(reg) _,
-            in(reg) KERNEL_DATA_SELECTOR as u32,
+            "mov ds, dx",          // Reload data segments
+            "mov es, dx",
+            "mov fs, dx",
+            "mov gs, dx",
+            "mov ss, dx",
+            // Use explicit registers so the compiler cannot alias the scratch
+            // register (rcx) with the data-selector register (rdx).
+            in("rax") KERNEL_CODE_SELECTOR as u64,
+            in("rdx") KERNEL_DATA_SELECTOR as u64,
+            out("rcx") _,
             options(nostack)
         );
     }

@@ -70,8 +70,6 @@ impl Architecture {
 
 impl BootInfo {
     pub fn from_bootloader(multiboot_info: u64) -> Self {
-        use core::fmt::Write;
-
         let mut framebuffer_addr: u64 = 0xb8000;
         let mut framebuffer_width: u32 = 80;
         let mut framebuffer_height: u32 = 25;
