@@ -21,6 +21,32 @@ pub extern "C" fn _start64(multiboot_info: u64) -> ! {
 }
 
 pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
+    // TODO: Enable new paging table to allow access to more memory
+    // Currently accessing the framebuffer will cause a page fault
+    // This is because the framebuffer is mapped at a high physical address that is not
+    // identity-mapped in the current paging setup (the one from the boot stub)
+    loop {
+        arch::halt();
+    }
+
+    // Draw checkerboard pattern to framebuffer
+    unsafe {
+        let fb_addr = (*boot_info).framebuffer.address as *mut u32;
+        let fb_width = (*boot_info).framebuffer.width as usize;
+        let fb_height = (*boot_info).framebuffer.height as usize;
+
+        for y in 0..fb_height {
+            for x in 0..fb_width {
+                let color = if (x / 50 + y / 50) % 2 == 0 {
+                    0xFF0000
+                } else {
+                    0x00FF00
+                };
+                *fb_addr.add(y * fb_width + x) = color;
+            }
+        }
+    }
+
     loop {
         arch::halt();
     }

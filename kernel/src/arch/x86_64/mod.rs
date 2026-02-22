@@ -7,10 +7,12 @@ pub mod serial;
 use crate::{BootInfo, kprintln};
 
 pub fn init(_: &BootInfo) {
-    // TODO: idt init
     // TODO: pit init
     gdt::init();
+    idt::init();
     serial::init();
+
+    crate::arch::enable_interrupts();
 
     kprintln!("x86_64 architecture initialized");
 }
