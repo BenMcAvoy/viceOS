@@ -1,7 +1,7 @@
 pub mod apic;
 pub mod gdt;
 pub mod idt;
-
+pub mod paging;
 pub mod serial;
 
 use crate::BootInfo;
@@ -11,6 +11,7 @@ pub fn init(_: &BootInfo) {
     // TODO: pit init
     gdt::init();
     idt::init();
+    paging::init();
     serial::init();
 
     crate::arch::enable_interrupts();

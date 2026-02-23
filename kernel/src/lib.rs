@@ -27,14 +27,6 @@ pub extern "C" fn _start64(multiboot_info: u64) -> ! {
 
 pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
     log::info!("Entering kernel main");
-    // TODO: Enable new paging table to allow access to more memory
-    // Currently accessing the framebuffer will cause a page fault
-    // This is because the framebuffer is mapped at a high physical address that is not
-    // identity-mapped in the current paging setup (the one from the boot stub)
-
-    loop {
-        arch::halt();
-    }
 
     // Draw checkerboard pattern to framebuffer
     unsafe {
