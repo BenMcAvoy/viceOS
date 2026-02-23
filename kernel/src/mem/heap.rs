@@ -146,9 +146,11 @@ unsafe impl GlobalAlloc for AutoExtendHeap {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.inner
-            .lock()
-            .deallocate(NonNull::new_unchecked(ptr), layout);
+        unsafe {
+            self.inner
+                .lock()
+                .deallocate(NonNull::new_unchecked(ptr), layout);
+        }
     }
 }
 

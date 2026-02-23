@@ -57,10 +57,7 @@ pub fn init(boot_info: &BootInfo) {
     parse_mem_map(boot_info);
     phys::init(boot_info);
     heap::init();
-    log::info!(
-        "Heap initialized: {} KiB",
-        heap::heap_size() / 1024
-    );
+    log::info!("Heap initialized: {} KiB", heap::heap_size() / 1024);
 }
 
 fn parse_mem_map(boot_info: &BootInfo) {

@@ -1,6 +1,4 @@
 //use crate::mm::{PAGE_SIZE, physical};
-use alloc::vec::Vec;
-use spin::Mutex;
 
 pub struct VmRegion {
     pub start: u64,

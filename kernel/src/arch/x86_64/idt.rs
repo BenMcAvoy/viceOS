@@ -162,12 +162,10 @@ macro_rules! pop_regs {
 
 #[inline(always)]
 fn halt() -> ! {
-    unsafe {
-        log::error!("System halted.");
-        arch::disable_interrupts();
-        loop {
-            arch::halt();
-        }
+    log::error!("System halted.");
+    arch::disable_interrupts();
+    loop {
+        arch::halt();
     }
 }
 

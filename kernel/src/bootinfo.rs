@@ -145,7 +145,11 @@ impl BootInfo {
                                 _ => MemoryType::Reserved,
                             };
 
-                            MEMORY_MAP_BUFFER[count] = MemoryMapEntry { base, length, mem_type };
+                            MEMORY_MAP_BUFFER[count] = MemoryMapEntry {
+                                base,
+                                length,
+                                mem_type,
+                            };
                             count += 1;
                             entry_addr += entry_size as u64;
                         }

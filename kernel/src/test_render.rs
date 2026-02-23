@@ -1,6 +1,5 @@
 use crate::FramebufferInfo;
 use crate::drivers::keyboard;
-use crate::arch;
 
 use tiny_skia::*;
 
@@ -35,7 +34,13 @@ pub fn test_render_loop(fb: FramebufferInfo) -> ! {
 
         let mut paint = Paint::default();
         paint.set_color_rgba8(255, 255, 255, 255);
-        pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        pm.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
 
         // blit to framebuffer
         unsafe {

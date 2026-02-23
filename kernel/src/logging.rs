@@ -91,4 +91,3 @@ pub fn init(level: LevelFilter) -> Result<(), SetLoggerError> {
 
     Ok(())
 }
-
