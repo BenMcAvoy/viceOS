@@ -11,3 +11,4 @@ crate-type = ["staticlib"]
 [dependencies]
 spin = "0.10.0"
 paste = "1"
+log = "0.4.29"

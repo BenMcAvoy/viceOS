@@ -4,7 +4,8 @@ pub mod idt;
 
 pub mod serial;
 
-use crate::{BootInfo, kprintln};
+use crate::BootInfo;
+use log;
 
 pub fn init(_: &BootInfo) {
     // TODO: pit init
@@ -14,7 +15,7 @@ pub fn init(_: &BootInfo) {
 
     crate::arch::enable_interrupts();
 
-    kprintln!("x86_64 architecture initialized");
+    log::info!("Architecture initialized");
 }
 
 /// Read MSR (Model Specific Register)

@@ -12,8 +12,7 @@
 //! interrupts and exceptions, but it is not used for task switching in modern operating systems.
 
 use core::mem::size_of;
-
-use crate::kprintln;
+use log;
 
 #[repr(C, packed)]
 struct GdtEntry {
@@ -169,7 +168,7 @@ pub const USER_DATA_SELECTOR: u16 = 0x20 | 3;
 pub const TSS_SELECTOR: u16 = 0x28;
 
 pub fn init() {
-    kprintln!("Initializing GDT...");
+    log::trace!("Initializing GDT...");
 
     unsafe {
         let tss_addr = &TSS as *const _ as u64;
@@ -185,7 +184,7 @@ pub fn init() {
         // Set TSS entry in GDT
         GDT.tss_entry = TssEntry::new(tss_addr, tss_size);
 
-        kprintln!(
+        log::debug!(
             "GDT initialized with TSS at {:#x}, size {:#x}",
             tss_addr,
             tss_size
@@ -197,22 +196,22 @@ pub fn init() {
             base: &GDT as *const _ as u64,
         };
 
-        kprintln!("Loading GDT....");
+        log::trace!("Loading GDT....");
 
         // Load GDT using lgdt instruction
         load_gdt(&gdt_descriptor);
 
-        kprintln!("GDT loaded, reloading segment registers...");
+        log::trace!("GDT loaded, reloading segment registers...");
 
         // Reload segment registers to use new GDT entries
         reload_segments();
 
-        kprintln!("Segment registers reloaded, loading TSS...");
+        log::trace!("Segment registers reloaded, loading TSS...");
 
         // Load TSS using ltr instruction
         load_tss(TSS_SELECTOR);
 
-        kprintln!("TSS loaded, GDT initialization complete");
+        log::debug!("TSS loaded, GDT initialization complete");
     }
 }
 

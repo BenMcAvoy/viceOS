@@ -3,8 +3,8 @@
 //! entries that correspond to vectors 0-255, which can be used for hardware interrupts, software
 //! interrupts, and exceptions.
 
-use crate::arch::x86_64::gdt::KERNEL_CODE_SELECTOR;
-use crate::kprintln;
+use crate::arch::{self, x86_64::gdt::KERNEL_CODE_SELECTOR};
+use log;
 
 use core::mem::size_of;
 
@@ -159,19 +159,30 @@ macro_rules! pop_regs {
     };
 }
 
+#[inline(always)]
+fn halt() -> ! {
+    unsafe {
+        log::error!("System halted.");
+        arch::disable_interrupts();
+        loop {
+            arch::halt();
+        }
+    }
+}
+
 macro_rules! exception_no_error {
     ($name:ident, $msg:expr) => {
         paste::paste! {
-            extern "C" fn [<$name _inner>](frame: *const InterruptFrame) {
+            extern "C" fn [<$name _inner>](frame: *const InterruptFrame) -> ! {
                 let f = unsafe { &*frame };
-                crate::kprintln!(
-                    concat!("\n--- CPU EXCEPTION: ", $msg, " ---\n",
+                log::error!(
+                    concat!("Exception: ", $msg, "\n",
                             "  RIP={:#018x}  CS={:#06x}  RFLAGS={:#018x}\n",
                             "  RSP={:#018x}  SS={:#06x}\n",
                             "  RAX={:#018x}  RBX={:#018x}  RCX={:#018x}  RDX={:#018x}\n",
                             "  RSI={:#018x}  RDI={:#018x}  RBP={:#018x}\n",
                             "  R8 ={:#018x}  R9 ={:#018x}  R10={:#018x}  R11={:#018x}\n",
-                            "  R12={:#018x}  R13={:#018x}  R14={:#018x}  R15={:#018x}"),
+                            "  R12={:#018x}  R13={:#018x}  R14={:#018x}  R15={:#018x}\x1b[0m\n"),
                     f.rip, f.cs, f.rflags,
                     f.rsp, f.ss,
                     f.rax, f.rbx, f.rcx, f.rdx,
@@ -179,6 +190,7 @@ macro_rules! exception_no_error {
                     f.r8, f.r9, f.r10, f.r11,
                     f.r12, f.r13, f.r14, f.r15,
                 );
+                halt();
             }
 
             #[unsafe(naked)]
@@ -199,17 +211,17 @@ macro_rules! exception_no_error {
 macro_rules! exception_with_error {
     ($name:ident, $msg:expr) => {
         paste::paste! {
-            extern "C" fn [<$name _inner>](frame: *const InterruptFrameWithError) {
+            extern "C" fn [<$name _inner>](frame: *const InterruptFrameWithError) -> ! {
                 let f = unsafe { &*frame };
-                crate::kprintln!(
-                    concat!("\n--- CPU EXCEPTION: ", $msg, " ---\n",
-                            "  ERROR CODE={:#018x}\n",
+                log::error!(
+                    concat!("Exception: ", $msg, "\n",
+                            "  Error Code : {:#018x}\n",
                             "  RIP={:#018x}  CS={:#06x}  RFLAGS={:#018x}\n",
                             "  RSP={:#018x}  SS={:#06x}\n",
                             "  RAX={:#018x}  RBX={:#018x}  RCX={:#018x}  RDX={:#018x}\n",
                             "  RSI={:#018x}  RDI={:#018x}  RBP={:#018x}\n",
                             "  R8 ={:#018x}  R9 ={:#018x}  R10={:#018x}  R11={:#018x}\n",
-                            "  R12={:#018x}  R13={:#018x}  R14={:#018x}  R15={:#018x}"),
+                            "  R12={:#018x}  R13={:#018x}  R14={:#018x}  R15={:#018x}\x1b[0m\n"),
                     f.error_code,
                     f.rip, f.cs, f.rflags,
                     f.rsp, f.ss,
@@ -218,6 +230,7 @@ macro_rules! exception_with_error {
                     f.r8, f.r9, f.r10, f.r11,
                     f.r12, f.r13, f.r14, f.r15,
                 );
+                halt();
             }
 
             #[unsafe(naked)]
@@ -237,21 +250,21 @@ macro_rules! exception_with_error {
 }
 
 extern "C" fn irq_common_handler(irq: u8) {
-    /*match irq {
+    match irq {
         0 => {
-            kprintln!("Timer interrupt");
+            log::trace!("Timer interrupt");
         }
         1 => {
             let scancode = crate::arch::x86_64::inb(0x60);
-            kprintln!("Keyboard interrupt (scancode: {:#04x})", scancode);
+            log::trace!("Keyboard interrupt (scancode: {:#04x})", scancode);
         }
         12 => {
-            kprintln!("Mouse interrupt");
+            log::trace!("Mouse interrupt");
         }
         _ => {
-            kprintln!("Received IRQ {}", irq);
+            log::trace!("Received IRQ {}", irq);
         }
-    }*/
+    }
 
     send_eoi(irq);
 }
@@ -273,26 +286,95 @@ macro_rules! irq_handler {
     };
 }
 
-exception_no_error!(divide_error, "Exception: Divide Error");
-exception_no_error!(debug, "Exception: Debug");
-exception_no_error!(nmi, "Exception: NMI");
-exception_no_error!(breakpoint, "Exception: Breakpoint");
-exception_no_error!(overflow, "Exception: Overflow");
-exception_no_error!(bound_range, "Exception: Bound Range");
-exception_no_error!(invalid_opcode, "Exception: Invalid Opcode");
-exception_no_error!(device_not_available, "Exception: Device Not Available");
-exception_no_error!(x87_fp_exception, "Exception: x87 FP Exception");
-exception_no_error!(simd_fp_exception, "Exception: SIMD FP Exception");
-exception_no_error!(virtualization, "Exception: Virtualization Exception");
-exception_no_error!(machine_check, "Exception: Machine Check");
+exception_no_error!(divide_error, "Divide Error");
+exception_no_error!(debug, "Debug");
+exception_no_error!(nmi, "NMI");
+exception_no_error!(breakpoint, "Breakpoint");
+exception_no_error!(overflow, "Overflow");
+exception_no_error!(bound_range, "Bound Range Exceeded");
+exception_no_error!(invalid_opcode, "Invalid Opcode");
+exception_no_error!(device_not_available, "Device Not Available");
+exception_no_error!(x87_fp_exception, "x87 FP Exception");
+exception_no_error!(simd_fp_exception, "SIMD FP Exception");
+exception_no_error!(virtualization, "Virtualization Exception");
+exception_no_error!(machine_check, "Machine Check");
 
-exception_with_error!(double_fault, "Exception: Double Fault");
-exception_with_error!(invalid_tss, "Exception: Invalid TSS");
-exception_with_error!(general_protection, "Exception: GP Fault");
-exception_with_error!(page_fault, "Exception: Page Fault");
-exception_with_error!(segment_not_present, "Exception: Segment Not Present");
-exception_with_error!(stack_segment, "Exception: Stack Segment");
-exception_with_error!(alignment_check, "Exception: Alignment Check");
+exception_with_error!(double_fault, "Double Fault");
+exception_with_error!(invalid_tss, "Invalid TSS");
+exception_with_error!(general_protection, "General Protection Fault");
+exception_with_error!(segment_not_present, "Segment Not Present");
+exception_with_error!(stack_segment, "Stack Segment Fault");
+exception_with_error!(alignment_check, "Alignment Check");
+
+// Dedicated page fault handler - reads CR2 and decodes the error code
+extern "C" fn page_fault_inner(frame: *const InterruptFrameWithError, cr2: u64) -> ! {
+    let f = unsafe { &*frame };
+    let ec = f.error_code;
+    let cause = if ec & (1 << 4) != 0 {
+        "instruction fetch"
+    } else if ec & 2 != 0 {
+        "write"
+    } else {
+        "read"
+    };
+    let reason = if ec & 1 != 0 {
+        "protection violation"
+    } else {
+        "page not present"
+    };
+    let mode = if ec & 4 != 0 { "user" } else { "kernel" };
+    log::error!(
+        "Exception: Page Fault\n\
+         Fault Addr : {cr2:#018x}\n\
+         Error Code : {ec:#010x}  [{mode} {cause} - {reason}]\n\
+         RIP={rip:#018x}  CS={cs:#06x}  RFLAGS={rfl:#018x}\n\
+         RSP={rsp:#018x}  SS={ss:#06x}\n\
+         RAX={rax:#018x}  RBX={rbx:#018x}  RCX={rcx:#018x}  RDX={rdx:#018x}\n\
+         RSI={rsi:#018x}  RDI={rdi:#018x}  RBP={rbp:#018x}\n\
+         R8 ={r8:#018x}  R9 ={r9:#018x}  R10={r10:#018x}  R11={r11:#018x}\n\
+         R12={r12:#018x}  R13={r13:#018x}  R14={r14:#018x}  R15={r15:#018x}\x1b[0m\n",
+        cr2 = cr2,
+        ec = ec,
+        mode = mode,
+        cause = cause,
+        reason = reason,
+        rip = f.rip,
+        cs = f.cs,
+        rfl = f.rflags,
+        rsp = f.rsp,
+        ss = f.ss,
+        rax = f.rax,
+        rbx = f.rbx,
+        rcx = f.rcx,
+        rdx = f.rdx,
+        rsi = f.rsi,
+        rdi = f.rdi,
+        rbp = f.rbp,
+        r8 = f.r8,
+        r9 = f.r9,
+        r10 = f.r10,
+        r11 = f.r11,
+        r12 = f.r12,
+        r13 = f.r13,
+        r14 = f.r14,
+        r15 = f.r15,
+    );
+    halt();
+}
+
+#[unsafe(naked)]
+extern "C" fn page_fault() {
+    core::arch::naked_asm!(
+        push_regs!(),
+        "mov rdi, rsp",   // arg1: frame pointer
+        "mov rsi, cr2",  // arg2: faulting address
+        "call {inner}",
+        pop_regs!(),
+        "add rsp, 8",    // pop error code
+        "iretq",
+        inner = sym page_fault_inner,
+    );
+}
 
 irq_handler!(irq0, 0u8);
 irq_handler!(irq1, 1u8);

@@ -8,23 +8,30 @@
 
 mod arch;
 mod bootinfo;
+mod logging;
 
 pub use bootinfo::BootInfo;
 
+use log::LevelFilter;
+
 #[unsafe(no_mangle)]
 pub extern "C" fn _start64(multiboot_info: u64) -> ! {
+    logging::init(LevelFilter::Trace).expect("Failed to initialize logger");
+
     let boot_info = BootInfo::from_bootloader(multiboot_info);
-    kprintln!("BootInfo: {:#?}", boot_info);
+    log::debug!("BootInfo: {:?}", boot_info);
 
     arch::init(&boot_info);
     kernel_main(&boot_info);
 }
 
 pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
+    log::info!("Entering kernel main");
     // TODO: Enable new paging table to allow access to more memory
     // Currently accessing the framebuffer will cause a page fault
     // This is because the framebuffer is mapped at a high physical address that is not
     // identity-mapped in the current paging setup (the one from the boot stub)
+
     loop {
         arch::halt();
     }
@@ -57,6 +64,8 @@ pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
+    log::error!("Kernel panic: {}", _info);
+
     loop {
         arch::halt();
     }
