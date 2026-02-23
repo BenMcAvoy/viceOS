@@ -236,7 +236,7 @@ fn reload_segments() {
             "push rax",            // Push code selector
             "lea rcx, [rip + 2f]", // Get address of label (use explicit scratch reg)
             "push rcx",            // Push return address
-            "retfq",               // Far return — flushes CS pipeline
+            "retfq",               // Far return - flushes CS pipeline
             "2:",
             "mov ds, dx",          // Reload data segments
             "mov es, dx",

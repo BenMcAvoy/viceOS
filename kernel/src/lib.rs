@@ -105,5 +105,23 @@ macro_rules! kprintln {
 
 #[alloc_error_handler]
 fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
+    let (heap_free, heap_used) = mem::heap::heap_stats();
+    let heap_total = mem::heap::heap_size();
+    let (phys_total, phys_used, phys_free) = mem::phys::stats();
+
+    log::error!("Allocation failed: size={}, align={}", layout.size(), layout.align());
+    log::error!(
+        "Heap:  total={} KiB, used={} KiB, free={} KiB",
+        heap_total / 1024,
+        heap_used / 1024,
+        heap_free / 1024
+    );
+    log::error!(
+        "Phys:  total={} pages, used={} pages, free={} pages",
+        phys_total,
+        phys_used,
+        phys_free
+    );
+
     panic!("Allocation error: {:?}", layout);
 }

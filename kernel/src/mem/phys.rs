@@ -135,6 +135,11 @@ impl FrameAllocator {
             }
         }
 
+        log::warn!(
+            "Physical frame allocator out of memory: total={} pages, free={} pages",
+            self.total_pages,
+            self.free_pages
+        );
         None // No free pages
     }
 

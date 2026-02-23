@@ -25,7 +25,7 @@ const REG_LSR: u16 = 5; // Line Status Register
 // Register flag values
 
 const LCR_8N1: u8 = 0x03; // 8 data bits, no parity, 1 stop bit
-const LCR_DLAB: u8 = 0x80; // Divisor Latch Access Bit — gates baud registers
+const LCR_DLAB: u8 = 0x80; // Divisor Latch Access Bit - gates baud registers
 
 const FCR_ENABLE_14B: u8 = 0xC7; // Enable FIFO, clear Tx/Rx, 14-byte threshold
 
