@@ -1,3 +1,14 @@
+use crate::mem::{MemoryMapEntry, MemoryType};
+
+/// Static buffer for memory map entries parsed from the bootloader.
+/// 128 entries is more than enough for any real system.
+static mut MEMORY_MAP_BUFFER: [MemoryMapEntry; 128] = [MemoryMapEntry {
+    base: 0,
+    length: 0,
+    mem_type: MemoryType::Reserved,
+}; 128];
+static mut MEMORY_MAP_COUNT: usize = 0;
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct BootInfo {
@@ -110,6 +121,38 @@ impl BootInfo {
                         }
                     }
 
+                    // Memory map
+                    if tag_type == 6 {
+                        let entry_size = *((addr + 8) as *const u32) as usize;
+                        // entry_version is at addr+12, currently unused
+                        let entries_start = addr + 16;
+                        let entries_end = addr + tag_size as u64;
+                        let mut entry_addr = entries_start;
+                        let mut count: usize = 0;
+
+                        while entry_addr + entry_size as u64 <= entries_end
+                            && count < MEMORY_MAP_BUFFER.len()
+                        {
+                            let base = *(entry_addr as *const u64);
+                            let length = *((entry_addr + 8) as *const u64);
+                            let mb_type = *((entry_addr + 16) as *const u32);
+
+                            let mem_type = match mb_type {
+                                1 => MemoryType::Available,
+                                3 => MemoryType::AcpiReclaimable,
+                                4 => MemoryType::AcpiNvs,
+                                5 => MemoryType::BadMemory,
+                                _ => MemoryType::Reserved,
+                            };
+
+                            MEMORY_MAP_BUFFER[count] = MemoryMapEntry { base, length, mem_type };
+                            count += 1;
+                            entry_addr += entry_size as u64;
+                        }
+
+                        MEMORY_MAP_COUNT = count;
+                    }
+
                     addr += ((tag_size + 7) & !7) as u64; // align to 8 bytes
                 }
             }
@@ -117,8 +160,8 @@ impl BootInfo {
 
         BootInfo {
             magic: multiboot_info,
-            memory_map: core::ptr::null(),
-            memory_map_entries: 0,
+            memory_map: unsafe { MEMORY_MAP_BUFFER.as_ptr() },
+            memory_map_entries: unsafe { MEMORY_MAP_COUNT },
             framebuffer: FramebufferInfo {
                 address: framebuffer_addr,
                 width: framebuffer_width,
@@ -138,24 +181,4 @@ impl BootInfo {
             cmdline_len: 0,
         }
     }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct MemoryMapEntry {
-    pub base: u64,
-    pub length: u64,
-    pub mem_type: MemoryType,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, PartialEq)]
-pub enum MemoryType {
-    Available = 1,
-    Reserved = 2,
-    AcpiReclaimable = 3,
-    AcpiNvs = 4,
-    BadMemory = 5,
-    Kernel = 6,
-    Bootloader = 7,
 }

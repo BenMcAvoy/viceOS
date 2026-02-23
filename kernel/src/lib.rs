@@ -6,13 +6,18 @@
 #![allow(static_mut_refs)] // Kernel needs mutable statics for low-level hardware access
 #![allow(unused_variables)] // Many syscall/driver stubs have unused parameters
 
+extern crate alloc;
+
 mod arch;
 mod bootinfo;
 mod logging;
+mod mem;
 
-pub use bootinfo::BootInfo;
+pub use bootinfo::{BootInfo, FramebufferInfo};
 
 use log::LevelFilter;
+
+use alloc::vec::Vec;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start64(multiboot_info: u64) -> ! {
@@ -22,17 +27,50 @@ pub extern "C" fn _start64(multiboot_info: u64) -> ! {
     log::debug!("BootInfo: {:?}", boot_info);
 
     arch::init(&boot_info);
+    mem::init(&boot_info);
+
     kernel_main(&boot_info);
 }
 
 pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
     log::info!("Entering kernel main");
 
-    // Draw checkerboard pattern to framebuffer
+    draw_checkerboard(unsafe { &(*boot_info).framebuffer });
+
+    // lets try to allocate a vector of 16384 KiB to test the allocator
+    let mut vec: Vec<u32> = Vec::with_capacity(8192 * 520); // 4096 * 4 bytes = 16384 KiB
+    for i in 0..8192 * 520 {
+        vec.push(i as u32);
+    }
+    log::info!("Allocated vector with {} elements", vec.len());
+
+    let heap_status = mem::phys::stats();
+    let (free_frames, total_frames, used_frames) = heap_status;
+    log::info!(
+        "Physical memory: {} frames total, {} frames free, {} frames used",
+        total_frames,
+        free_frames,
+        used_frames
+    );
+
+    let heap_status = mem::heap::heap_stats();
+    let (free_heap, used_heap) = heap_status;
+    log::info!(
+        "Heap memory: {} bytes free, {} bytes used",
+        free_heap,
+        used_heap
+    );
+
+    loop {
+        arch::halt();
+    }
+}
+
+fn draw_checkerboard(fb: &FramebufferInfo) {
     unsafe {
-        let fb_addr = (*boot_info).framebuffer.address as *mut u32;
-        let fb_width = (*boot_info).framebuffer.width as usize;
-        let fb_height = (*boot_info).framebuffer.height as usize;
+        let fb_addr = fb.address as *mut u32;
+        let fb_width = fb.width as usize;
+        let fb_height = fb.height as usize;
 
         for y in 0..fb_height {
             for x in 0..fb_width {
@@ -44,10 +82,6 @@ pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
                 *fb_addr.add(y * fb_width + x) = color;
             }
         }
-    }
-
-    loop {
-        arch::halt();
     }
 }
 
@@ -67,4 +101,9 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 macro_rules! kprintln {
     () => ($crate::serial_print!("\n"));
     ($($arg:tt)*) => ($crate::serial_print!("{}\n", format_args!($($arg)*)));
+}
+
+#[alloc_error_handler]
+fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
+    panic!("Allocation error: {:?}", layout);
 }

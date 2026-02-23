@@ -1,4 +1,3 @@
-
 /// Every PTE has flags
 /// These flags control how the page is accessed, whether it's present in memory, whether it's
 /// writable, etc. This defines the flags for a page table entry (PTE) in x86_64 architecture.
@@ -193,5 +192,138 @@ pub fn init() {
 
         PAGE_TABLE_PHYS = pml4_addr;
         crate::arch::x86_64::write_cr3(PAGE_TABLE_PHYS);
+    }
+}
+
+/// Map virt -> phys
+pub fn map_page(virt: u64, phys: u64, flags: u64) -> Result<(), &'static str> {
+    let indices = VirtualAddress(virt).indices();
+
+    unsafe {
+        let pml4e = &mut KPML4[indices.pml4];
+        if !pml4e.is_present() {
+            let pdpt_phys =
+                crate::mem::phys::alloc_frame().ok_or("Failed to allocate frame for PDPT")?;
+            *pml4e = PageTableEntry::new(pdpt_phys, flags::PRESENT | flags::WRITABLE);
+
+            // Zero the new table
+            let pdpt = pml4e.addr() as *mut PageTable;
+            core::ptr::write_bytes(pdpt, 0, 1);
+        }
+
+        let pdpt = pml4e.addr() as *mut PageTable;
+        let pdpte = &mut (*pdpt).entries[indices.pdpt];
+
+        if !pdpte.is_present() {
+            let pd_phys =
+                crate::mem::phys::alloc_frame().ok_or("Failed to allocate frame for PD")?;
+            *pdpte = PageTableEntry::new(pd_phys, flags::PRESENT | flags::WRITABLE);
+
+            // Zero the new table
+            let pd = pdpte.addr() as *mut PageTable;
+            core::ptr::write_bytes(pd, 0, 1);
+        }
+
+        let pd = pdpte.addr() as *mut PageTable;
+        let pde = &mut (*pd).entries[indices.pd];
+
+        if !pde.is_present() {
+            let pt_phys =
+                crate::mem::phys::alloc_frame().ok_or("Failed to allocate frame for PT")?;
+            *pde = PageTableEntry::new(pt_phys, flags::PRESENT | flags::WRITABLE);
+
+            // Zero the new table
+            let pt = pde.addr() as *mut PageTable;
+            core::ptr::write_bytes(pt, 0, 1);
+        }
+
+        let pt = pde.addr() as *mut PageTable;
+        let pte = &mut (*pt).entries[indices.pt];
+        *pte = PageTableEntry::new(phys, flags | flags::PRESENT);
+
+        // Flush TLB to make sure the new mapping is visible to the CPU
+        crate::arch::x86_64::invlpg(virt);
+    }
+
+    Ok(())
+}
+
+fn unmap_page(virt: u64) -> Result<u64, &'static str> {
+    let indices = VirtualAddress(virt).indices();
+
+    unsafe {
+        let pml4_entry = &mut KPML4[indices.pml4];
+        if !pml4_entry.is_present() {
+            return Err("PML4 entry not present");
+        }
+
+        let pdpt = pml4_entry.addr() as *mut PageTable;
+        let pdpt_entry = &(*pdpt).entries[indices.pdpt];
+        if !pdpt_entry.is_present() {
+            return Err("PDPT entry not present");
+        }
+
+        let pd = pdpt_entry.addr() as *mut PageTable;
+        let pd_entry = &(*pd).entries[indices.pd];
+        if !pd_entry.is_present() {
+            return Err("PD entry not present");
+        }
+
+        let pt = pd_entry.addr() as *mut PageTable;
+        let pt_entry = &mut (*pt).entries[indices.pt];
+        if !pt_entry.is_present() {
+            return Err("PT entry not present");
+        }
+
+        let phys = pt_entry.addr();
+        *pt_entry = PageTableEntry::empty();
+
+        crate::arch::x86_64::invlpg(virt);
+
+        Ok(phys)
+    }
+}
+
+/// Translate virtual address to physical address
+pub fn translate(virt: u64) -> Option<u64> {
+    let indices = VirtualAddress(virt).indices();
+
+    unsafe {
+        let pml4_entry = &KPML4[indices.pml4];
+        if !pml4_entry.is_present() {
+            return None;
+        }
+
+        let pdpt = pml4_entry.addr() as *const PageTable;
+        let pdpt_entry = &(*pdpt).entries[indices.pdpt];
+        if !pdpt_entry.is_present() {
+            return None;
+        }
+
+        // Check for 1GB page
+        if pdpt_entry.is_huge_page() {
+            let phys = pdpt_entry.addr() + (virt & 0x3FFF_FFFF);
+            return Some(phys);
+        }
+
+        let pd = pdpt_entry.addr() as *const PageTable;
+        let pd_entry = &(*pd).entries[indices.pd];
+        if !pd_entry.is_present() {
+            return None;
+        }
+
+        // Check for 2MB page
+        if pd_entry.is_huge_page() {
+            let phys = pd_entry.addr() + (virt & 0x1F_FFFF);
+            return Some(phys);
+        }
+
+        let pt = pd_entry.addr() as *const PageTable;
+        let pt_entry = &(*pt).entries[indices.pt];
+        if !pt_entry.is_present() {
+            return None;
+        }
+
+        Some(pt_entry.addr() + indices.offset as u64)
     }
 }

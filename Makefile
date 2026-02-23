@@ -97,7 +97,7 @@ run: iso
 		qemu-img create -f raw $(DISK_IMG) 64M; \
 	fi
 	@echo "Starting viceOS with persistent storage..."
-	$(QEMU) $(QEMU_BASE) -serial stdio -cdrom $(ISO_FILE) $(QEMU_DISK)
+	$(QEMU) $(QEMU_BASE) -serial stdio -cdrom $(ISO_FILE) $(QEMU_DISK) -m 1024M
 
 # Run without serial (GUI only)
 run-gui: iso
