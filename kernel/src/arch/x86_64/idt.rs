@@ -4,6 +4,7 @@
 //! interrupts, and exceptions.
 
 use crate::arch::{self, x86_64::gdt::KERNEL_CODE_SELECTOR};
+use crate::drivers::keyboard;
 use log;
 
 use core::mem::size_of;
@@ -255,8 +256,7 @@ extern "C" fn irq_common_handler(irq: u8) {
             log::trace!("Timer interrupt");
         }
         1 => {
-            let scancode = crate::arch::x86_64::inb(0x60);
-            log::trace!("Keyboard interrupt (scancode: {:#04x})", scancode);
+            keyboard::handle_interrupt();
         }
         12 => {
             log::trace!("Mouse interrupt");
