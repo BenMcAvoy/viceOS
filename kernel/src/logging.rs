@@ -65,17 +65,26 @@ impl log::Log for SerialLogger {
         let mut ser = SERIAL.lock();
         const RESET_COLOUR: &str = "\x1b[0m";
 
+        let max_level_len: i32 = 5;
+        let level_str = record.level().as_str();
+        let pad_len = max_level_len.saturating_sub(level_str.len().try_into().unwrap_or(0));
+
+        // write spaces manually
+        for _ in 0..pad_len {
+            let _ = ser.write_str(" ");
+        }
+
         let colour = self.get_log_colour(record.level());
-        write!(
+
+        let _ = write!(
             ser,
             "{}[{}] - {}: {}{}\n",
             colour,
-            record.level(),
+            level_str,
             record.target(),
             record.args(),
-            RESET_COLOUR
-        )
-        .unwrap();
+            RESET_COLOUR,
+        );
     }
 
     fn flush(&self) {}

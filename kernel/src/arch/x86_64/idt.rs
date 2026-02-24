@@ -248,11 +248,17 @@ macro_rules! exception_with_error {
     };
 }
 
+static mut TIMER_TICKS: u64 = 0;
+
 extern "C" fn irq_common_handler(irq: u8) {
     match irq {
-        0 => {
-            log::trace!("Timer interrupt");
-        }
+        0 => unsafe {
+            TIMER_TICKS += 1;
+
+            if TIMER_TICKS % 100 == 0 {
+                log::trace!("Timer tick: {}", TIMER_TICKS);
+            }
+        },
         1 => {
             keyboard::handle_interrupt();
         }

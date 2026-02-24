@@ -36,6 +36,9 @@ pub struct FramebufferInfo {
     pub red_shift: u8,
     pub green_shift: u8,
     pub blue_shift: u8,
+    pub red_mask: u8,
+    pub green_mask: u8,
+    pub blue_mask: u8,
 }
 
 #[repr(C)]
@@ -87,6 +90,14 @@ impl BootInfo {
         let mut framebuffer_pitch: u32 = 160;
         let mut framebuffer_bpp: u8 = 16;
 
+        let mut framebuffer_red_shift: u8 = 16;
+        let mut framebuffer_green_shift: u8 = 8;
+        let mut framebuffer_blue_shift: u8 = 16;
+
+        let mut framebuffer_red_mask: u8 = 0;
+        let mut framebuffer_green_mask: u8 = 0;
+        let mut framebuffer_blue_mask: u8 = 0;
+
         if multiboot_info != 0 {
             unsafe {
                 let total_size = *(multiboot_info as *const u32) as usize;
@@ -119,6 +130,15 @@ impl BootInfo {
                         if fb_type != 1 {
                             panic!("Unsupported framebuffer type");
                         }
+
+                        framebuffer_red_shift = *((addr + 32) as *const u8);
+                        framebuffer_red_mask = *((addr + 33) as *const u8);
+
+                        framebuffer_green_shift = *((addr + 34) as *const u8);
+                        framebuffer_green_mask = *((addr + 35) as *const u8);
+
+                        framebuffer_blue_shift = *((addr + 36) as *const u8);
+                        framebuffer_blue_mask = *((addr + 37) as *const u8);
                     }
 
                     // Memory map
@@ -172,9 +192,12 @@ impl BootInfo {
                 height: framebuffer_height,
                 pitch: framebuffer_pitch,
                 bpp: framebuffer_bpp,
-                red_shift: 16,
-                green_shift: 8,
-                blue_shift: 16,
+                red_shift: framebuffer_red_shift,
+                green_shift: framebuffer_green_shift,
+                blue_shift: framebuffer_blue_shift,
+                red_mask: framebuffer_red_mask,
+                green_mask: framebuffer_green_mask,
+                blue_mask: framebuffer_blue_mask,
             },
             arch: Architecture::current(),
             kernel_start: 0,

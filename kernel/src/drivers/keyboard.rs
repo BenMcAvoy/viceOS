@@ -717,3 +717,5 @@ pub fn get_char() -> Option<char> {
 pub fn has_key() -> bool {
     !KEYBOARD_BUF.lock().is_empty()
 }
+
+pub fn init() {}
