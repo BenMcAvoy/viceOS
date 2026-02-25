@@ -408,6 +408,8 @@ extern "C" fn syscall_handler() {
 }
 
 pub fn init() {
+    log::trace!("Initializing IDT...");
+
     unsafe {
         // CPU exceptions (0-31)
         IDT.entries[0].set_handler(divide_error as *const () as u64);
@@ -475,7 +477,11 @@ pub fn init() {
             options(nostack)
         );
 
+        log::debug!("IDT loaded at {:#x}, size {} bytes", &IDT as *const _ as u64, core::mem::size_of::<Idt>());
+
         init_pic();
+
+        log::debug!("IDT initialization complete");
     }
 }
 
@@ -483,6 +489,8 @@ pub fn init() {
 /// This remaps the PIC's IRQs to interrupts 32-47, which avoids conflicts with CPU exceptions
 /// (0-31).
 fn init_pic() {
+    log::trace!("Initializing PIC, remapping IRQs to vectors 0x20-0x2F...");
+
     use crate::arch::x86_64::{inb, outb};
 
     const PIC1_CMD: u16 = 0x20;
@@ -513,6 +521,8 @@ fn init_pic() {
     // Restore masks (enable all for now)
     outb(PIC1_DATA, 0x00);
     outb(PIC2_DATA, 0x00);
+
+    log::debug!("PIC initialized: IRQ0-7 -> INT 0x20-0x27, IRQ8-15 -> INT 0x28-0x2F");
 }
 
 pub fn send_eoi(irq: u8) {

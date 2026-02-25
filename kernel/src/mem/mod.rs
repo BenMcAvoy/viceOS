@@ -55,6 +55,16 @@ static MEMORY_STATS: Mutex<MemoryStats> = Mutex::new(MemoryStats {
 pub fn init(boot_info: &BootInfo) {
     log::trace!("Initializing memory management");
     parse_mem_map(boot_info);
+
+    {
+        let stats = MEMORY_STATS.lock();
+        log::debug!(
+            "Memory map parsed: {} MiB total, {} MiB available",
+            stats.total_memory / 1024 / 1024,
+            stats.available_memory / 1024 / 1024,
+        );
+    }
+
     phys::init(boot_info);
     heap::init();
     log::info!("Heap initialized: {} KiB", heap::heap_size() / 1024);

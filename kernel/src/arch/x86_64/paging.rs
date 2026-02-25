@@ -1,3 +1,5 @@
+use log;
+
 /// Every PTE has flags
 /// These flags control how the page is accessed, whether it's present in memory, whether it's
 /// writable, etc. This defines the flags for a page table entry (PTE) in x86_64 architecture.
@@ -165,6 +167,8 @@ static mut PAGE_TABLE_PHYS: u64 = 0;
 
 /// Initialize paging
 pub fn init() {
+    log::trace!("Initializing paging...");
+
     unsafe {
         let pml4_addr = &KPML4 as *const _ as u64;
         let pdpt_addr = &KPDPT as *const _ as u64;
@@ -192,6 +196,11 @@ pub fn init() {
 
         PAGE_TABLE_PHYS = pml4_addr;
         crate::arch::x86_64::write_cr3(PAGE_TABLE_PHYS);
+
+        log::debug!(
+            "Paging initialized: identity-mapped 4 GiB with 2 MiB huge pages, PML4 at {:#x}",
+            pml4_addr
+        );
     }
 }
 

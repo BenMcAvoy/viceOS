@@ -69,6 +69,14 @@ impl FrameAllocator {
                 }
             }
         }
+
+        log::debug!(
+            "Frame allocator initialized: {} pages ({} MiB) total, {} pages ({} MiB) free",
+            self.total_pages,
+            (self.total_pages * PAGE_SIZE) / 1024 / 1024,
+            self.free_pages,
+            (self.free_pages * PAGE_SIZE) / 1024 / 1024,
+        );
     }
 
     fn mark_free(&mut self, page: usize) {

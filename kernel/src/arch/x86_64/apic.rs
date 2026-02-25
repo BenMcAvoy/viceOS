@@ -10,6 +10,7 @@
 //! we need to remap the PICs to avoid conflicts.
 
 use crate::arch::x86_64::{cpuid, rdmsr, wrmsr};
+use log;
 
 /// APIC base MSR
 const IA32_APIC_BASE_MSR: u32 = 0x1B;
@@ -44,7 +45,10 @@ pub fn is_available() -> bool {
 }
 
 pub fn init() -> bool {
+    log::trace!("Initializing APIC...");
+
     if !is_available() {
+        log::warn!("APIC not available on this system");
         return false;
     }
 
@@ -52,12 +56,17 @@ pub fn init() -> bool {
         let base = rdmsr(IA32_APIC_BASE_MSR);
         APIC_BASE = base & 0xFFFFF000; // Mask to get the base address
 
+        log::debug!("APIC base address: {:#x}", APIC_BASE);
+
         // Enable the APIC
         wrmsr(IA32_APIC_BASE_MSR, base | (1 << 11)); // Set the APIC Global Enable bit
 
         // Enable the Spurious Interrupt Vector Register (SVR).
         let svr = rdmsr(IA32_APIC_BASE_MSR + regs::SVR / 0x10);
+        let _ = svr;
     }
+
+    log::debug!("APIC initialized: ID={}, version={:#x}", get_id(), get_version());
 
     true
 }

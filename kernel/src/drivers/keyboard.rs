@@ -1,5 +1,6 @@
 use alloc::collections::VecDeque;
 use spin::Mutex;
+use log;
 
 static KEYBOARD_BUF: Mutex<VecDeque<KeyEvent>> = Mutex::new(VecDeque::new());
 static EXTENDED_KEY: Mutex<bool> = Mutex::new(false);
@@ -718,4 +719,6 @@ pub fn has_key() -> bool {
     !KEYBOARD_BUF.lock().is_empty()
 }
 
-pub fn init() {}
+pub fn init() {
+    log::debug!("Keyboard driver initialized (stub - no hardware initialization yet)");
+}

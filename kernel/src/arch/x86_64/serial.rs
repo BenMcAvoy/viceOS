@@ -3,6 +3,7 @@ use core::fmt::Write;
 use crate::arch::x86_64::{inb, outb};
 
 use spin::Mutex;
+use log;
 
 // Port base
 
@@ -150,7 +151,9 @@ impl core::fmt::Debug for Serial {
 pub static SERIAL: Mutex<Serial> = Mutex::new(Serial::new(COM1));
 
 pub fn init() {
+    log::trace!("Initializing serial port COM1 (0x{:03X})...", COM1);
     SERIAL.lock().init();
+    log::debug!("Serial port initialized: 115200 baud, 8N1, FIFO enabled");
 }
 
 /// Printing macros (supports `format_args!` syntax, e.g. `serial_println!("Hello, {}!", "world")`)
