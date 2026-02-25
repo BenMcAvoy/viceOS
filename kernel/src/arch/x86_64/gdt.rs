@@ -12,48 +12,150 @@
 //! interrupts and exceptions, but it is not used for task switching in modern operating systems.
 
 use core::mem::size_of;
+
+use bitflags::bitflags;
 use log;
+
+bitflags! {
+    #[repr(transparent)]
+    pub struct Access: u8 {
+        const ACCESSED      = 0b0000_0001;
+        const READ_WRITE    = 0b0000_0010; // for data segments: writable, for code: readable
+        const EXPANSION     = 0b0000_0100; // direction/conforming
+        const EXECUTABLE    = 0b0000_1000; // code/data segment
+        const DESCRIPTOR    = 0b0001_0000; // 0 = system, 1 = code/data
+        const PRIV_RING0    = 0b0000_0000; // DPL bits 00
+        const PRIV_RING1    = 0b0010_0000; // DPL bits 01
+        const PRIV_RING2    = 0b0100_0000; // DPL bits 10
+        const PRIV_RING3    = 0b0110_0000; // DPL bits 11
+        const PRESENT       = 0b1000_0000;
+    }
+}
+
+bitflags! {
+    #[repr(transparent)]
+    pub struct Granularity: u8 {
+        const LIMIT_HIGH_MASK = 0b0000_1111; // high 4 bits of limit
+        const AVL             = 0b0001_0000;
+        const LONG_MODE       = 0b0010_0000;
+        const DEFAULT_OPSIZE  = 0b0100_0000; // 0=16bit segment, 1=32bit segment
+        const GRANULARITY_4K  = 0b1000_0000;
+    }
+}
 
 #[repr(C, packed)]
 struct GdtEntry {
     limit_low: u16,
     base_low: u16,
     base_mid: u8,
-    access: u8,
-    granularity: u8,
+    access: Access,
+    granularity: Granularity,
     base_high: u8,
 }
 
 impl GdtEntry {
-    const fn new(base: u32, limit: u32, access: u8, granularity: u8) -> Self {
+    const fn new(base: u32, limit: u32, access: Access, granularity: Granularity) -> Self {
+        let limit_low = (limit & 0xFFFF) as u16;
+        let base_low = (base & 0xFFFF) as u16;
+        let base_mid = ((base >> 16) & 0xFF) as u8;
+        let base_high = ((base >> 24) & 0xFF) as u8;
+
+        let granularity_byte =
+            (((limit >> 16) & 0x0F) as u8) | (granularity.bits() & 0xF0);
+
         GdtEntry {
-            limit_low: (limit & 0xFFFF) as u16,
-            base_low: (base & 0xFFFF) as u16,
-            base_mid: ((base >> 16) & 0xFF) as u8,
+            limit_low,
+            base_low,
+            base_mid,
             access,
-            granularity: ((limit >> 16) & 0x0F) as u8 | (granularity & 0xF0),
-            base_high: ((base >> 24) & 0xFF) as u8,
+            granularity: Granularity::from_bits_retain(granularity_byte),
+            base_high,
         }
     }
 
-    const fn code() -> Self {
-        Self::new(0, 0xFFFFF, 0x9A, 0xA0) // Code segment: present, ring 0, executable, readable
+    pub const fn code() -> Self {
+        const KERNEL_CODE_ACCESS: Access = Access::from_bits_retain(
+            Access::PRESENT.bits()
+                | Access::DESCRIPTOR.bits()
+                | Access::EXECUTABLE.bits()
+                | Access::READ_WRITE.bits()
+        );
+
+        const KERNEL_CODE_GRANULARITY: Granularity = Granularity::from_bits_retain(
+            Granularity::GRANULARITY_4K.bits()
+                | Granularity::LONG_MODE.bits()
+        );
+
+        Self::new(
+            0,
+            0xFFFFF,
+            KERNEL_CODE_ACCESS,
+            KERNEL_CODE_GRANULARITY,
+        )
     }
 
-    const fn data() -> Self {
-        Self::new(0, 0xFFFFF, 0x92, 0xA0) // Data segment: present, ring 0, writable
+    pub const fn data() -> Self {
+        const KERNEL_DATA_ACCESS: Access = Access::from_bits_retain(
+            Access::PRESENT.bits()
+                | Access::DESCRIPTOR.bits()
+                | Access::READ_WRITE.bits()
+        );
+        const KERNEL_DATA_GRANULARITY: Granularity = Granularity::from_bits_retain(
+            Granularity::GRANULARITY_4K.bits()
+                | Granularity::DEFAULT_OPSIZE.bits()
+        );
+
+        Self::new(
+            0,
+            0xFFFFF,
+            KERNEL_DATA_ACCESS,
+            KERNEL_DATA_GRANULARITY,
+        )
     }
 
-    const fn user_code() -> Self {
-        Self::new(0, 0xFFFFF, 0xFA, 0xA0) // User code segment: present, ring 3, executable, readable
+    pub const fn user_code() -> Self {
+        const USER_CODE_ACCESS: Access = Access::from_bits_retain(
+            Access::PRESENT.bits()
+                | Access::DESCRIPTOR.bits()
+                | Access::EXECUTABLE.bits()
+                | Access::READ_WRITE.bits()
+                | Access::PRIV_RING3.bits()
+        );
+        const USER_CODE_GRANULARITY: Granularity = Granularity::from_bits_retain(
+            Granularity::GRANULARITY_4K.bits()
+                | Granularity::LONG_MODE.bits()
+        );
+
+        Self::new(
+            0,
+            0xFFFFF,
+            USER_CODE_ACCESS,
+            USER_CODE_GRANULARITY,
+        )
     }
 
-    const fn user_data() -> Self {
-        Self::new(0, 0xFFFFF, 0xF2, 0xA0) // User data segment: present, ring 3, writable
+    pub const fn user_data() -> Self {
+        const USER_DATA_ACCESS: Access = Access::from_bits_retain(
+            Access::PRESENT.bits()
+                | Access::DESCRIPTOR.bits()
+                | Access::READ_WRITE.bits()
+                | Access::PRIV_RING3.bits()
+        );
+        const USER_DATA_GRANULARITY: Granularity = Granularity::from_bits_retain(
+            Granularity::GRANULARITY_4K.bits()
+                | Granularity::DEFAULT_OPSIZE.bits()
+        );
+
+        Self::new(
+            0,
+            0xFFFFF,
+            USER_DATA_ACCESS,
+            USER_DATA_GRANULARITY,
+        )
     }
 
-    const fn null() -> Self {
-        Self::new(0, 0, 0, 0) // Null segment: required, but unused
+    pub const fn null() -> Self {
+        Self::new(0, 0, Access::empty(), Granularity::empty())
     }
 }
 
