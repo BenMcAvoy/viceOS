@@ -13,6 +13,7 @@ mod bootinfo;
 mod drivers;
 mod logging;
 mod mem;
+mod proc;
 
 pub use bootinfo::{BootInfo, FramebufferInfo};
 
@@ -49,6 +50,10 @@ pub extern "C" fn kernel_main(boot_info: &BootInfo) -> ! {
     drivers::init(boot_info);
 
     kprintln!("{}", KERNEL_BANNER);
+
+    let pid = proc::manager::get_manager().create_process();
+    let proc = proc::manager::get_process(pid).unwrap();
+    log::trace!("Test proc: {:#?}", proc);
 
     let mut screen = SCREEN.lock();
 
